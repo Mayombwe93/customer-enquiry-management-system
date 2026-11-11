@@ -196,8 +196,7 @@ Tested on n8n 2.33.7 (self-hosted).
 
 Mayombwe David, an aspiring virtual assistant focused on AI-powered administrative support and workflow automation.
 
-- LinkedIn: [ADD: link]
-- Portfolio: [ADD: link]
-- Email: [ADD: a professional email address you are happy to make public]
-
+- LinkedIn: https://www.linkedin.com/in/mayombwe-david/
+- Portfolio: 
+- Email: kagegere.intake@gmail.com
 *All names, emails and phone numbers in this project are fake test data.*
