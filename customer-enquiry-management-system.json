@@ -1,0 +1,1272 @@
+{
+  "name": "Customer Enquiry Management System",
+  "nodes": [
+    {
+      "parameters": {
+        "pollTimes": {
+          "item": [
+            {
+              "mode": "everyMinute"
+            }
+          ]
+        },
+        "documentId": {
+          "__rl": true,
+          "value": "PASTE_YOUR_GOOGLE_SHEET_ID_HERE",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "Form Responses 1",
+          "mode": "name"
+        },
+        "event": "rowAdded",
+        "options": {}
+      },
+      "id": "02936b3a-1710-457d-b91f-b0e190632e01",
+      "name": "New Enquiry Row",
+      "type": "n8n-nodes-base.googleSheetsTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        300
+      ],
+      "notes": "STEP 1: pick your Google Sheets Trigger credential. Paste your Sheet ID in Document (By ID). Tab must be Form Responses 1. Workflow must be Published to run.",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "900c8390-221d-4f9c-8dc1-68f3d6045dca",
+              "name": "sheetId",
+              "value": "PASTE_YOUR_GOOGLE_SHEET_ID_HERE",
+              "type": "string"
+            },
+            {
+              "id": "550a667a-c315-467e-a6e3-ce3bc06babe8",
+              "name": "sheetTab",
+              "value": "Form Responses 1",
+              "type": "string"
+            },
+            {
+              "id": "575f4ed6-dc5e-4645-946b-0162a98a3259",
+              "name": "ownerChatId",
+              "value": "PASTE_OWNER_TELEGRAM_CHAT_ID_HERE",
+              "type": "string"
+            },
+            {
+              "id": "b2d4a0ad-20e1-4c18-9ca4-f86c5c0ce939",
+              "name": "adminChatId",
+              "value": "PASTE_ADMIN_TELEGRAM_CHAT_ID_HERE",
+              "type": "string"
+            },
+            {
+              "id": "e6b1ea76-c7be-427d-8ddc-dff807584bff",
+              "name": "businessName",
+              "value": "Your Business Name",
+              "type": "string"
+            },
+            {
+              "id": "3676d8ab-7535-4297-893e-4ec8993eef58",
+              "name": "ownerName",
+              "value": "Your Name",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "1e0d54d0-74b6-4c34-8c51-57374e1c0e52",
+      "name": "Config",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        220,
+        300
+      ],
+      "notes": "STEP 2: the only settings you edit. Fill the 6 values: Sheet ID, tab name, owner chat ID, admin chat ID, business name, your name. Paste the same Sheet ID here as in the trigger.",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "resource": "sheet",
+        "operation": "read",
+        "documentId": {
+          "__rl": true,
+          "value": "={{ $('Config').first().json.sheetId }}",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "={{ $('Config').first().json.sheetTab }}",
+          "mode": "name"
+        },
+        "options": {}
+      },
+      "id": "63201607-50fe-407b-b1d1-b4e8ca6bf9c4",
+      "name": "Get Existing IDs",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        440,
+        300
+      ],
+      "executeOnce": true,
+      "alwaysOutputData": true,
+      "onError": "continueErrorOutput",
+      "notes": "Pick your Google Sheets credential. Nothing else to change. Reads the sheet to find today's last ID.",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "jsCode": "// No edits needed here. Business and owner name come from the 'Config' node.\nconst cfg = $('Config').first().json;\nconst BUSINESS_NAME = cfg.businessName;\nconst OWNER_NAME = cfg.ownerName;\nconst TZ = 'Africa/Nairobi';\nconst emailRe = /^[^\\s@]+@[^\\s@]+\\.[^\\s@]{2,}$/;\nconst clean = v => String(v === undefined || v === null ? '' : v).trim();\n\nconst triggerItems = $('New Enquiry Row').all();\nconst sheetRows = $('Get Existing IDs').all().map(i => i.json);\nconst now = $now.setZone(TZ);\nconst prefix = 'ENQ-' + now.toFormat('yyyyLLdd') + '-';\n\n// highest sequence already used today\nlet maxSeq = 0;\nfor (const r of sheetRows) {\n  const id = clean(r['Enquiry ID']);\n  if (id.startsWith(prefix)) {\n    const n = parseInt(id.slice(prefix.length), 10);\n    if (!isNaN(n) && n > maxSeq) maxSeq = n;\n  }\n}\n\nconst usedRows = new Set();\nconst out = [];\nfor (const item of triggerItems) {\n  const j = item.json;\n  // skip rows that already have an Enquiry ID (already processed)\n  if (clean(j['Enquiry ID'])) continue;\n  const fullName = clean(j['Full Name']);\n  const email = clean(j['Email']);\n  const phone = clean(j['Phone']) || 'Not provided';\n  const service = clean(j['Service Needed']) || 'General enquiry';\n  const message = clean(j['Message']);\n\n  // locate this row's number in the sheet (needed to update the right row)\n  let rowNumber = j.row_number || null;\n  if (!rowNumber) {\n    const match = sheetRows.find(r =>\n      !usedRows.has(r.row_number) &&\n      !clean(r['Enquiry ID']) &&\n      clean(r['Timestamp']) === clean(j['Timestamp']) &&\n      clean(r['Email']) === email &&\n      clean(r['Message']) === message);\n    if (match) { rowNumber = match.row_number; usedRows.add(rowNumber); }\n  }\n\n  maxSeq += 1;\n  const enquiryId = prefix + String(maxSeq).padStart(3, '0');\n\n  const problems = [];\n  if (!fullName) problems.push('Full Name is empty');\n  if (!email) problems.push('Email is empty');\n  else if (!emailRe.test(email)) problems.push('Email is not valid');\n  if (!message) problems.push('Message is empty');\n  if (!rowNumber) problems.push('Could not locate the sheet row');\n\n  out.push({ json: {\n    enquiryId, rowNumber, fullName, email, phone, service, message,\n    dateReceived: now.toFormat('yyyy-MM-dd HH:mm'),\n    valid: problems.length === 0,\n    reason: problems.join('; '),\n    businessName: BUSINESS_NAME,\n    ownerName: OWNER_NAME\n  }});\n}\nreturn out;"
+      },
+      "id": "0aa989bc-d7ff-416f-bba9-08a27f69e45d",
+      "name": "Generate Enquiry ID",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        660,
+        300
+      ],
+      "notes": "No changes needed. Creates ENQ-YYYYMMDD-001 (Nairobi time), tidies the fields and checks name, email and message.",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "19f86651-e24c-4b1a-9637-fb93c51bf275",
+              "leftValue": "={{ $json.valid }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "87d51b6c-8802-4f39-a478-ca686ab8f7cf",
+      "name": "Is Data Valid?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        880,
+        300
+      ],
+      "notes": "Top output (true) = data is good. Bottom output (false) = validation failed, goes to the alert.",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "documentId": {
+          "__rl": true,
+          "value": "={{ $('Config').first().json.sheetId }}",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "={{ $('Config').first().json.sheetTab }}",
+          "mode": "name"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "row_number": "={{ $('Generate Enquiry ID').item.json.rowNumber }}",
+            "Enquiry ID": "={{ $('Generate Enquiry ID').item.json.enquiryId }}",
+            "Date Received": "={{ $('Generate Enquiry ID').item.json.dateReceived }}",
+            "Status": "New",
+            "Acknowledgement Sent": "No",
+            "Owner Notified": "No",
+            "Last Updated": "={{ $now.setZone('Africa/Nairobi').toFormat('yyyy-MM-dd HH:mm:ss') }}"
+          },
+          "matchingColumns": [
+            "row_number"
+          ],
+          "schema": [
+            {
+              "id": "row_number",
+              "displayName": "row_number",
+              "required": false,
+              "defaultMatch": true,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": true,
+              "readOnly": true,
+              "removed": false
+            },
+            {
+              "id": "Enquiry ID",
+              "displayName": "Enquiry ID",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Date Received",
+              "displayName": "Date Received",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Status",
+              "displayName": "Status",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Acknowledgement Sent",
+              "displayName": "Acknowledgement Sent",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Owner Notified",
+              "displayName": "Owner Notified",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Last Updated",
+              "displayName": "Last Updated",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "id": "71151809-f29b-4a78-91aa-ff0d033200fa",
+      "name": "Write ID and Status",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        1100,
+        200
+      ],
+      "onError": "continueErrorOutput",
+      "notes": "Pick your Google Sheets credential. Writes ID, Status New, Ack No, Notified No.",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "sendTo": "={{ $('Generate Enquiry ID').item.json.email }}",
+        "subject": "=We have received your enquiry ({{ $('Generate Enquiry ID').item.json.enquiryId }})",
+        "emailType": "text",
+        "message": "=Dear {{ $('Generate Enquiry ID').item.json.fullName }},\n\nThank you for contacting {{ $('Generate Enquiry ID').item.json.businessName }}. We have received your enquiry about {{ $('Generate Enquiry ID').item.json.service }} and recorded it under reference {{ $('Generate Enquiry ID').item.json.enquiryId }}.\n\nA member of our team will respond to you within 24 hours.\n\nIf your request is urgent, please reply to this email and include your phone number so we can call you.\n\nKind regards,\n{{ $('Generate Enquiry ID').item.json.ownerName }}\n{{ $('Generate Enquiry ID').item.json.businessName }}",
+        "options": {
+          "appendAttribution": false,
+          "senderName": "={{ $('Generate Enquiry ID').item.json.businessName }}"
+        }
+      },
+      "id": "362e9b47-05ef-44fa-8e3a-157fffd117e2",
+      "name": "Send Acknowledgement",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        1320,
+        200
+      ],
+      "onError": "continueErrorOutput",
+      "notes": "Pick your Gmail credential. You may edit the Subject and Message wording.",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "documentId": {
+          "__rl": true,
+          "value": "={{ $('Config').first().json.sheetId }}",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "={{ $('Config').first().json.sheetTab }}",
+          "mode": "name"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "row_number": "={{ $('Generate Enquiry ID').item.json.rowNumber }}",
+            "Acknowledgement Sent": "Yes",
+            "Last Updated": "={{ $now.setZone('Africa/Nairobi').toFormat('yyyy-MM-dd HH:mm:ss') }}"
+          },
+          "matchingColumns": [
+            "row_number"
+          ],
+          "schema": [
+            {
+              "id": "row_number",
+              "displayName": "row_number",
+              "required": false,
+              "defaultMatch": true,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": true,
+              "readOnly": true,
+              "removed": false
+            },
+            {
+              "id": "Acknowledgement Sent",
+              "displayName": "Acknowledgement Sent",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Last Updated",
+              "displayName": "Last Updated",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "id": "bfaea56d-56b1-43a4-bfa7-509407a27c8f",
+      "name": "Mark Acknowledged",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        1540,
+        200
+      ],
+      "onError": "continueErrorOutput",
+      "notes": "Pick your Google Sheets credential. Sets Acknowledgement Sent = Yes.",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $('Config').first().json.ownerChatId }}",
+        "text": "=🆕 NEW ENQUIRY: {{ $('Generate Enquiry ID').item.json.enquiryId }}\n\nName: {{ $('Generate Enquiry ID').item.json.fullName }}\nPhone: {{ $('Generate Enquiry ID').item.json.phone }}\nService: {{ $('Generate Enquiry ID').item.json.service }}\n\nMessage:\n{{ $('Generate Enquiry ID').item.json.message.length > 500 ? $('Generate Enquiry ID').item.json.message.slice(0, 500) + '… (full text in Sheet)' : $('Generate Enquiry ID').item.json.message }}\n\nStatus: New. Customer has been emailed.",
+        "additionalFields": {
+          "appendAttribution": false
+        }
+      },
+      "id": "818a853f-2c12-43cc-81b5-da964f3bbcb7",
+      "name": "Notify Owner",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        1760,
+        200
+      ],
+      "onError": "continueErrorOutput",
+      "notes": "Pick your Telegram credential (Enquiry Alerts Bot). Chat ID comes from Config.",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "documentId": {
+          "__rl": true,
+          "value": "={{ $('Config').first().json.sheetId }}",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "={{ $('Config').first().json.sheetTab }}",
+          "mode": "name"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "row_number": "={{ $('Generate Enquiry ID').item.json.rowNumber }}",
+            "Owner Notified": "Yes",
+            "Last Updated": "={{ $now.setZone('Africa/Nairobi').toFormat('yyyy-MM-dd HH:mm:ss') }}"
+          },
+          "matchingColumns": [
+            "row_number"
+          ],
+          "schema": [
+            {
+              "id": "row_number",
+              "displayName": "row_number",
+              "required": false,
+              "defaultMatch": true,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": true,
+              "readOnly": true,
+              "removed": false
+            },
+            {
+              "id": "Owner Notified",
+              "displayName": "Owner Notified",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Last Updated",
+              "displayName": "Last Updated",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "id": "6b57a5f4-27fb-4838-84e7-56d0c47e1ec3",
+      "name": "Mark Owner Notified",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        1980,
+        200
+      ],
+      "onError": "continueErrorOutput",
+      "notes": "Pick your Google Sheets credential. Sets Owner Notified = Yes.",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "4e8bedef-10f3-4434-8bb6-261695bd90dd",
+              "name": "failedStep",
+              "value": "Read existing IDs (Google Sheets)",
+              "type": "string"
+            },
+            {
+              "id": "65f460bb-d023-41f0-ae2a-f999aeacfc74",
+              "name": "enquiryId",
+              "value": "UNASSIGNED",
+              "type": "string"
+            },
+            {
+              "id": "02494a1a-052e-4399-bac7-2c46f656863a",
+              "name": "rowNumber",
+              "value": "={{ $('Generate Enquiry ID').item.json.rowNumber }}",
+              "type": "string"
+            },
+            {
+              "id": "bcd5ba21-7823-4fd2-8a77-44b94716fd31",
+              "name": "reason",
+              "value": "={{ $json.error?.message || (typeof $json.error === 'string' ? $json.error : 'See n8n execution log') }}",
+              "type": "string"
+            },
+            {
+              "id": "9045ce48-98c0-4439-b3ea-7ff1e10de738",
+              "name": "customer",
+              "value": "={{ $('New Enquiry Row').first().json['Full Name'] || 'n/a' }}",
+              "type": "string"
+            },
+            {
+              "id": "16696467-6a90-4007-9c0f-f07e27f72483",
+              "name": "phone",
+              "value": "={{ $('New Enquiry Row').first().json['Phone'] || 'n/a' }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "6b3e0a5a-eccf-4a0b-b39d-c19c4618ea4b",
+      "name": "Err: Read Sheet",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        440,
+        560
+      ],
+      "notes": "Error branch: records which step failed. No changes needed.",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "2939569c-c3ec-4513-b1fd-5919ec1d3635",
+              "name": "failedStep",
+              "value": "Validation",
+              "type": "string"
+            },
+            {
+              "id": "2f37e8d2-1bf6-4c4d-be2c-719c50002039",
+              "name": "enquiryId",
+              "value": "={{ $('Generate Enquiry ID').item.json.enquiryId }}",
+              "type": "string"
+            },
+            {
+              "id": "7e87d8f0-3c80-4c10-b78f-e6f3ae702be2",
+              "name": "rowNumber",
+              "value": "={{ $('Generate Enquiry ID').item.json.rowNumber }}",
+              "type": "string"
+            },
+            {
+              "id": "0ed285e1-ca0e-4092-bc64-506c50ec7e69",
+              "name": "reason",
+              "value": "={{ $json.reason }}",
+              "type": "string"
+            },
+            {
+              "id": "a816689a-0c84-4884-b2ce-a02a32f46727",
+              "name": "customer",
+              "value": "={{ $('Generate Enquiry ID').item.json.fullName || '(blank)' }}",
+              "type": "string"
+            },
+            {
+              "id": "3f4b1db1-602f-4c8f-983f-3d9ff2a094ff",
+              "name": "phone",
+              "value": "={{ $('Generate Enquiry ID').item.json.phone }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "edd02ffc-064f-4795-91e7-c802476335fc",
+      "name": "Err: Validation",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        880,
+        560
+      ],
+      "notes": "Error branch: records which step failed. No changes needed.",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "2c865744-8459-490b-8442-bc2e9e02a364",
+              "name": "failedStep",
+              "value": "Write ID and Status (Google Sheets)",
+              "type": "string"
+            },
+            {
+              "id": "951cba82-c5c0-4111-b554-54f128af3685",
+              "name": "enquiryId",
+              "value": "={{ $('Generate Enquiry ID').item.json.enquiryId }}",
+              "type": "string"
+            },
+            {
+              "id": "a1399bdd-96cb-4e4b-b7c1-0640fb1aa970",
+              "name": "rowNumber",
+              "value": "={{ $('Generate Enquiry ID').item.json.rowNumber }}",
+              "type": "string"
+            },
+            {
+              "id": "1e3f5abd-5959-48f6-91ec-848268e30621",
+              "name": "reason",
+              "value": "={{ $json.error?.message || (typeof $json.error === 'string' ? $json.error : 'See n8n execution log') }}",
+              "type": "string"
+            },
+            {
+              "id": "5863b3e1-7b83-4e5c-8b26-eda6f24ee3c3",
+              "name": "customer",
+              "value": "={{ $('Generate Enquiry ID').item.json.fullName || '(blank)' }}",
+              "type": "string"
+            },
+            {
+              "id": "fdda2fef-43c0-48e5-8ed4-99b06e60a957",
+              "name": "phone",
+              "value": "={{ $('Generate Enquiry ID').item.json.phone }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "b85759b7-e415-4125-b959-ea0b79b3cdf5",
+      "name": "Err: Write ID",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        1100,
+        560
+      ],
+      "notes": "Error branch: records which step failed. No changes needed.",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "847c131c-5e9b-4775-b171-950097a3b2dc",
+              "name": "failedStep",
+              "value": "Send Acknowledgement (Gmail)",
+              "type": "string"
+            },
+            {
+              "id": "84d7ec27-9ff1-4122-b38a-ec8927e0f31b",
+              "name": "enquiryId",
+              "value": "={{ $('Generate Enquiry ID').item.json.enquiryId }}",
+              "type": "string"
+            },
+            {
+              "id": "47b022f9-cd04-42e5-8b5b-c9fd8b5261b6",
+              "name": "rowNumber",
+              "value": "={{ $('Generate Enquiry ID').item.json.rowNumber }}",
+              "type": "string"
+            },
+            {
+              "id": "7c266197-7a8b-47a3-bc80-c7a3678adda9",
+              "name": "reason",
+              "value": "={{ $json.error?.message || (typeof $json.error === 'string' ? $json.error : 'See n8n execution log') }}",
+              "type": "string"
+            },
+            {
+              "id": "1de5f6c0-4334-4ee2-804c-83bff0084ab1",
+              "name": "customer",
+              "value": "={{ $('Generate Enquiry ID').item.json.fullName || '(blank)' }}",
+              "type": "string"
+            },
+            {
+              "id": "6bd76cd0-24fb-479a-886a-3bb643371964",
+              "name": "phone",
+              "value": "={{ $('Generate Enquiry ID').item.json.phone }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "42c05ecb-66f4-4d8c-872c-67631ceea037",
+      "name": "Err: Gmail",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        1320,
+        560
+      ],
+      "notes": "Error branch: records which step failed. No changes needed.",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "7cb363b6-148c-4a87-961f-ad7c6e09a8c5",
+              "name": "failedStep",
+              "value": "Mark Acknowledged (Google Sheets)",
+              "type": "string"
+            },
+            {
+              "id": "a18a04e7-6d57-485e-828f-23d9c9721ba4",
+              "name": "enquiryId",
+              "value": "={{ $('Generate Enquiry ID').item.json.enquiryId }}",
+              "type": "string"
+            },
+            {
+              "id": "6e703fb2-3603-4b30-8342-80bff40f032a",
+              "name": "rowNumber",
+              "value": "={{ $('Generate Enquiry ID').item.json.rowNumber }}",
+              "type": "string"
+            },
+            {
+              "id": "aa87a444-1bae-48cb-821c-697953c6e475",
+              "name": "reason",
+              "value": "={{ $json.error?.message || (typeof $json.error === 'string' ? $json.error : 'See n8n execution log') }}",
+              "type": "string"
+            },
+            {
+              "id": "6fa47961-9fa4-4230-acbb-a8a73b140214",
+              "name": "customer",
+              "value": "={{ $('Generate Enquiry ID').item.json.fullName || '(blank)' }}",
+              "type": "string"
+            },
+            {
+              "id": "2b4d388d-b36e-4d7a-8a0b-e7d8dd143fae",
+              "name": "phone",
+              "value": "={{ $('Generate Enquiry ID').item.json.phone }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "cb6317e8-1281-48be-9498-b1d27ef829c6",
+      "name": "Err: Mark Acknowledged",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        1540,
+        560
+      ],
+      "notes": "Error branch: records which step failed. No changes needed.",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "44f87066-bfd5-4721-a0d3-4ff2cb36d52b",
+              "name": "failedStep",
+              "value": "Notify Owner (Telegram)",
+              "type": "string"
+            },
+            {
+              "id": "16b57266-6f16-4daf-8216-eaebba68e780",
+              "name": "enquiryId",
+              "value": "={{ $('Generate Enquiry ID').item.json.enquiryId }}",
+              "type": "string"
+            },
+            {
+              "id": "8d49b7f7-dbc9-4983-8bfa-55bec43fa32a",
+              "name": "rowNumber",
+              "value": "={{ $('Generate Enquiry ID').item.json.rowNumber }}",
+              "type": "string"
+            },
+            {
+              "id": "91b5543d-f34b-4b4f-a573-20be9e4b3a6b",
+              "name": "reason",
+              "value": "={{ $json.error?.message || (typeof $json.error === 'string' ? $json.error : 'See n8n execution log') }}",
+              "type": "string"
+            },
+            {
+              "id": "e3d11441-a951-48ee-9b51-2a9fa5e24b06",
+              "name": "customer",
+              "value": "={{ $('Generate Enquiry ID').item.json.fullName || '(blank)' }}",
+              "type": "string"
+            },
+            {
+              "id": "73812ef0-339b-46c5-8115-f4dd017f3730",
+              "name": "phone",
+              "value": "={{ $('Generate Enquiry ID').item.json.phone }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "e61aafad-58c3-468e-b1c9-ddcad3628ce0",
+      "name": "Err: Telegram",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        1760,
+        560
+      ],
+      "notes": "Error branch: records which step failed. No changes needed.",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "08b2ae38-d133-4daf-b3f4-92aa9f6d8b55",
+              "name": "failedStep",
+              "value": "Mark Owner Notified (Google Sheets)",
+              "type": "string"
+            },
+            {
+              "id": "a5364b3c-d3b0-4e96-a367-df797ca1f5b4",
+              "name": "enquiryId",
+              "value": "={{ $('Generate Enquiry ID').item.json.enquiryId }}",
+              "type": "string"
+            },
+            {
+              "id": "7f2a17b4-5bb3-4a79-b297-8eb318b2c1cb",
+              "name": "rowNumber",
+              "value": "={{ $('Generate Enquiry ID').item.json.rowNumber }}",
+              "type": "string"
+            },
+            {
+              "id": "b3db7be0-86ee-494b-a356-c63fa8ce4a16",
+              "name": "reason",
+              "value": "={{ $json.error?.message || (typeof $json.error === 'string' ? $json.error : 'See n8n execution log') }}",
+              "type": "string"
+            },
+            {
+              "id": "5af9f1ae-f794-46c5-ae15-a33b617ed05f",
+              "name": "customer",
+              "value": "={{ $('Generate Enquiry ID').item.json.fullName || '(blank)' }}",
+              "type": "string"
+            },
+            {
+              "id": "da5e5dc7-1055-41f8-9624-4aac2ff77712",
+              "name": "phone",
+              "value": "={{ $('Generate Enquiry ID').item.json.phone }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "7bdc5a45-3a17-4228-8b62-8639c557e7c9",
+      "name": "Err: Mark Notified",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        1980,
+        560
+      ],
+      "notes": "Error branch: records which step failed. No changes needed.",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $('Config').first().json.adminChatId }}",
+        "text": "=⚠️ ENQUIRY WORKFLOW ALERT\n\nFailed step: {{ $json.failedStep }}\nEnquiry ID: {{ $json.enquiryId }}\nCustomer: {{ $json.customer }} | Phone: {{ $json.phone }}\nReason: {{ $json.reason }}\n\nThe row is marked \"Needs Review\" where possible. Please check this enquiry manually.",
+        "additionalFields": {
+          "appendAttribution": false
+        }
+      },
+      "id": "0986df85-6d87-46a2-bc1a-8c5d1abde9b8",
+      "name": "Alert Admin",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        2200,
+        480
+      ],
+      "onError": "continueRegularOutput",
+      "notes": "Pick your Telegram credential. Sends the failure alert to the admin chat ID in Config.",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "documentId": {
+          "__rl": true,
+          "value": "={{ $('Config').first().json.sheetId }}",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "={{ $('Config').first().json.sheetTab }}",
+          "mode": "name"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "row_number": "={{ $json.rowNumber }}",
+            "Enquiry ID": "={{ $json.enquiryId }}",
+            "Status": "Needs Review",
+            "Last Updated": "={{ $now.setZone('Africa/Nairobi').toFormat('yyyy-MM-dd HH:mm:ss') }}"
+          },
+          "matchingColumns": [
+            "row_number"
+          ],
+          "schema": [
+            {
+              "id": "row_number",
+              "displayName": "row_number",
+              "required": false,
+              "defaultMatch": true,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": true,
+              "readOnly": true,
+              "removed": false
+            },
+            {
+              "id": "Enquiry ID",
+              "displayName": "Enquiry ID",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Status",
+              "displayName": "Status",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Last Updated",
+              "displayName": "Last Updated",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "id": "408bd924-090f-4ff3-9e43-ce396e561bec",
+      "name": "Mark Needs Review",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        2200,
+        640
+      ],
+      "onError": "continueRegularOutput",
+      "notes": "Pick your Google Sheets credential. Sets Status = Needs Review on failure.",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "content": "## Customer Enquiry Management System\nGoogle Form → Sheet → n8n → Gmail + Telegram.\n\n**Before you run it:**\n1. Select your credential on every Google Sheets, Gmail and Telegram node\n2. Paste your Sheet ID into New Enquiry Row (Document)\n3. Fill the 6 values in the Config node\n4. Publish the workflow",
+        "height": 300,
+        "width": 420
+      },
+      "id": "0ff9eab1-f4ef-49cc-9861-eb8de201bd23",
+      "name": "Sticky: Setup",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -40,
+        -140
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## Error handling\nEvery step has an error output. Failures go to an Err node that names the step and enquiry ID, then the Alert Admin message is sent and the row is marked Needs Review.",
+        "height": 180,
+        "width": 520
+      },
+      "id": "8e90d3a7-3efb-40c8-b239-ab6bfaa7c730",
+      "name": "Sticky: Errors",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        200,
+        760
+      ]
+    }
+  ],
+  "connections": {
+    "New Enquiry Row": {
+      "main": [
+        [
+          {
+            "node": "Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Config": {
+      "main": [
+        [
+          {
+            "node": "Get Existing IDs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Existing IDs": {
+      "main": [
+        [
+          {
+            "node": "Generate Enquiry ID",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Err: Read Sheet",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate Enquiry ID": {
+      "main": [
+        [
+          {
+            "node": "Is Data Valid?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Is Data Valid?": {
+      "main": [
+        [
+          {
+            "node": "Write ID and Status",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Err: Validation",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Write ID and Status": {
+      "main": [
+        [
+          {
+            "node": "Send Acknowledgement",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Err: Write ID",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Acknowledgement": {
+      "main": [
+        [
+          {
+            "node": "Mark Acknowledged",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Err: Gmail",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Mark Acknowledged": {
+      "main": [
+        [
+          {
+            "node": "Notify Owner",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Err: Mark Acknowledged",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Notify Owner": {
+      "main": [
+        [
+          {
+            "node": "Mark Owner Notified",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Err: Telegram",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Mark Owner Notified": {
+      "main": [
+        [],
+        [
+          {
+            "node": "Err: Mark Notified",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Err: Read Sheet": {
+      "main": [
+        [
+          {
+            "node": "Alert Admin",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Err: Validation": {
+      "main": [
+        [
+          {
+            "node": "Alert Admin",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Mark Needs Review",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Err: Write ID": {
+      "main": [
+        [
+          {
+            "node": "Alert Admin",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Mark Needs Review",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Err: Gmail": {
+      "main": [
+        [
+          {
+            "node": "Alert Admin",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Mark Needs Review",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Err: Mark Acknowledged": {
+      "main": [
+        [
+          {
+            "node": "Alert Admin",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Mark Needs Review",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Err: Telegram": {
+      "main": [
+        [
+          {
+            "node": "Alert Admin",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Mark Needs Review",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Err: Mark Notified": {
+      "main": [
+        [
+          {
+            "node": "Alert Admin",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Mark Needs Review",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "Africa/Nairobi",
+    "saveManualExecutions": true
+  },
+  "meta": {
+    "templateCredsSetupCompleted": false
+  },
+  "tags": []
+}
