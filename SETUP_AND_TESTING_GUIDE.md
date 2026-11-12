@@ -182,22 +182,7 @@ The row is marked "Needs Review" where possible. Please check this enquiry manua
 
 ---
 
-## 6. Demo video script (about 75 seconds)
 
-**[0:00-0:10] Problem (talking over the Sheet)**
-"Small businesses lose customers when enquiries are answered late or forgotten. This is my Customer Enquiry Management System, built with n8n, to fix that automatically."
-
-**[0:10-0:20] The form**
-"A customer fills in a simple Google Form: name, email, phone, the service they need and a message." *(Fill and submit a fake enquiry: Amina Test.)*
-
-**[0:20-0:30] The Sheet and n8n**
-"The response lands in Google Sheets. n8n spots the new row, creates a unique ID, and checks the name, email and message are valid." *(Show the workflow canvas, then the Sheet filling in `ENQ-…-001`, Status New.)*
-
-**[0:30-0:45] Customer email**
-"Within about a minute, the customer gets a professional acknowledgement with their name, the service they asked for and a 24-hour response promise." *(Show the email.)*
-
-**[0:45-0:55] Owner alert**
-"At the same time, the business owner gets a Telegram message with the ID, name, phone, service and message, so nothing is missed." *(Show Telegram.)*
 
 **[0:55-1:05] Sheet tracking**
 "The Sheet is updated: acknowledgement sent, owner notified, and a timestamp. The owner can then move the status through Contacted, Quoted, Won or Lost." *(Show the columns and the Status dropdown.)*
