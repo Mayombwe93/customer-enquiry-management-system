@@ -182,13 +182,3 @@ The row is marked "Needs Review" where possible. Please check this enquiry manua
 
 ---
 
-
-
-**[0:55-1:05] Sheet tracking**
-"The Sheet is updated: acknowledgement sent, owner notified, and a timestamp. The owner can then move the status through Contacted, Quoted, Won or Lost." *(Show the columns and the Status dropdown.)*
-
-**[1:05-1:15] Error handling**
-"If something goes wrong, like an invalid email, I get a Telegram alert naming the failed step and the enquiry ID, and the row is marked Needs Review." *(Show a failed test and the alert.)*
-
-**[1:15-1:20] Close**
-"Every enquiry recorded, every customer acknowledged, every owner informed. Thanks for watching."
