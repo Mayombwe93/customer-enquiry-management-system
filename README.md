@@ -10,10 +10,9 @@ HOW TO EDIT THIS README
 
 > An n8n automation that records every customer enquiry, acknowledges the customer within about a minute, and alerts the business owner on Telegram.
 
-**Built by:** Mayombwe David | **Demo video:** [ADD: link to your 60-90 second demo video] | **Demo business:** BrightClean (fictional cleaning company)
+**Built by:** Mayombwe David |Mayombwe David | **Demo business:** BrightClean (fictional cleaning company)
 
 ![Workflow canvas](images/01-workflow-canvas.png)
-*[ADD: upload a screenshot of your full n8n workflow canvas as images/01-workflow-canvas.png]*
 
 ## Business Problem
 
