@@ -75,11 +75,10 @@ flowchart LR
 
 | Step | Screenshot |
 |---|---|
-| The enquiry form | ![Form](images/02-form.png) *[ADD: screenshot of the Google Form]* |
-| The Sheet after processing | ![Sheet](images/03-sheet.png) *[ADD: screenshot of the Sheet with ID, Status, Yes / Yes. Hide real emails.]* |
-| Acknowledgement email | ![Email](images/04-email.png) *[ADD: screenshot of the customer email]* |
-| Owner notification | ![Telegram](images/05-telegram-owner.png) *[ADD: screenshot of the Telegram message. Hide chat IDs.]* |
-| Error alert | ![Alert](images/06-telegram-alert.png) *[ADD: screenshot of a failure alert]* |
+| The Sheet after processing | ![Sheet](images/03-sheet.png)  |
+| Acknowledgement email | ![Email](images/04-email.png)  |
+| Owner notification | ![Telegram](images/05-telegram-owner.png)  |
+| Error alert | ![Alert](images/06-telegram-alert.png)  |
 
 ### Example messages (fake data)
 
