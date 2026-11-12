@@ -197,6 +197,6 @@ Tested on n8n 2.33.7 (self-hosted).
 Mayombwe David, an aspiring virtual assistant focused on AI-powered administrative support and workflow automation.
 
 - LinkedIn: https://www.linkedin.com/in/mayombwe-david/
-- Portfolio: 
+- Portfolio: https://github.com/Mayombwe93/customer-enquiry-management-system
 - Email: kagegere.intake@gmail.com
 *All names, emails and phone numbers in this project are fake test data.*
